@@ -1,3 +1,4 @@
+// models/User.js
 import mongoose from 'mongoose';
 
 const userSchema = new mongoose.Schema({
@@ -7,7 +8,8 @@ const userSchema = new mongoose.Schema({
         unique: true,
         trim: true,
         minlength: [3, 'Nome de usuário deve ter no mínimo 3 caracteres'],
-        maxlength: [30, 'Nome de usuário deve ter no máximo 30 caracteres']
+        maxlength: [30, 'Nome de usuário deve ter no máximo 30 caracteres'],
+        index: true
     },
     email: {
         type: String,
@@ -15,7 +17,8 @@ const userSchema = new mongoose.Schema({
         unique: true,
         lowercase: true,
         trim: true,
-        match: [/^\S+@\S+\.\S+$/, 'Email inválido']
+        match: [/^\S+@\S+\.\S+$/, 'Email inválido'],
+        index: true
     },
     password: {
         type: String,
@@ -38,10 +41,6 @@ const userSchema = new mongoose.Schema({
 }, {
     timestamps: true
 });
-
-// Índices para melhorar performance
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
 
 // Método para atualizar último login
 userSchema.methods.updateLastLogin = function() {
