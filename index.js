@@ -1,124 +1,204 @@
-// index.js (Backend - Exemplo com Express e ES Modules)
-import express from 'express';
-// Removido: import path from 'path'; // Não necessário se usar index.html
-// Removido: import { fileURLToPath } from 'url'; // Não necessário se usar index.html
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from 'dotenv';
+dotenv.config();
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import axios from 'axios';
+import crypto from 'crypto';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import jwt from 'jsonwebtoken';
 
-dotenv.config(); // Carrega as variáveis do .env PRIMEIRO
+// --- Imports dos Modelos e Rotas ---
+import SessaoChat from './models/SessaoChat.js';
+import User from './models/User.js';
+import authRoutes from './routes/auth.js';
 
-// --- Configuração opcional para __dirname se precisar (não usado neste código) ---
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = path.dirname(__filename);
-// ---
-
+// --- Configuração Express ---
 const app = express();
-const port = 3000; // Ou outra porta
+const port = process.env.PORT || 3000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // --- Middlewares ---
-// 1. Servir arquivos estáticos (HTML, CSS, JS do Cliente) da pasta 'public'
-//    Isso automaticamente serve public/index.html quando você acessa '/'
-app.use(express.static('public'));
-
-// 2. Parsear corpos de requisição JSON (essencial para req.body)
+app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
-// --- Configuração do Google Generative AI ---
-// Verifica se a chave API foi carregada
-if (!process.env.GOOGLE_API_KEY) {
-    console.error("!!! ERRO FATAL: GOOGLE_API_KEY não encontrada no .env !!!");
-    process.exit(1); // Encerra o processo se a chave estiver faltando
+// --- Configuração da API Gemini ---
+const API_KEY = process.env.GEMINI_API_KEY;
+if (!API_KEY) {
+    console.error("🚨 ERRO FATAL: A variável de ambiente GEMINI_API_KEY não foi encontrada.");
+    process.exit(1);
 }
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const MODEL_NAME = "gemini-1.5-flash-latest";
+const generationConfig = { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 300 };
+const safetySettings = [
+    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+];
 
-// Obter o modelo generativo - Usando gemini-1.5-flash-latest
-// Removidas configs de geração/segurança temporariamente para teste
-console.log("Usando modelo Gemini: gemini-1.5-flash-latest");
-const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash-latest"
-  // generationConfig e safetySettings omitidos por enquanto para simplificar
-});
+// --- Definição das Ferramentas (Tools) ---
+const tools = [{
+    functionDeclarations: [
+        { name: "getCurrentTime", description: "Obtém a data e a hora atuais no fuso horário do Brasil (São Paulo).", parameters: { type: "object", properties: {} } },
+        { name: "getWeather", description: "Obtém o clima atual para uma cidade específica.", parameters: { type: "object", properties: { location: { type: "string", description: "A cidade para a qual se deve obter o clima, por exemplo, 'São Paulo'." } }, required: ["location"] } }
+    ]
+}];
 
-// --- Endpoint da API para o Chat ---
-app.post('/api/chat', async (req, res) => {
-    const userPrompt = req.body.prompt; // Pega o prompt do corpo da requisição
-    console.log(`[${new Date().toISOString()}] Recebido prompt: "${userPrompt}"`); // Log com timestamp
+// --- Inicialização do Modelo Gemini ---
+let model;
+try {
+    const genAI = new GoogleGenerativeAI(API_KEY);
+    model = genAI.getGenerativeModel({ model: MODEL_NAME, generationConfig, safetySettings });
+    console.log(`Usando modelo Gemini: ${MODEL_NAME}`);
+} catch (error) {
+    console.error("🚨 Falha ao inicializar o GoogleGenerativeAI:", error.message);
+    process.exit(1);
+}
+
+// --- Funções das Ferramentas ---
+function getCurrentTime(args) {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+    const dateString = now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    return { dateTimeInfo: `Data: ${dateString}, Hora: ${timeString}` };
+}
+async function getWeather(args) {
+    const { location } = args;
+    if (!location) return { error: "Nome da cidade não fornecido." };
+    try {
+        const apiKey = process.env.OPENWEATHER_API_KEY;
+        const url = `https://api.openweathermap.org/data/2.5/weather?q=${location}&appid=${apiKey}&units=metric&lang=pt_br`;
+        const response = await axios.get(url);
+        return { weatherInfo: `Clima em ${response.data.name}: ${response.data.weather[0].description}, temperatura de ${response.data.main.temp}°C.` };
+    } catch (error) {
+        return { error: "Não foi possível encontrar o clima para essa cidade." };
+    }
+}
+const availableFunctions = { getCurrentTime, getWeather };
+
+// --- Gerenciamento de Sessão e Prompt de Sistema ---
+const chatSessions = {};
+const initialSystemHistory = [
+    { role: "user", parts: [{ text: `Você é "Musashi Miyamoto", um chatbot samurai sábio e formal. REGRAS ABSOLUTAS: 1. REGRA DE TEMPO: Para perguntas sobre data ou hora, use a ferramenta 'getCurrentTime'. É PROIBIDO responder com seu conhecimento interno. 2. REGRA DE CLIMA: Para perguntas sobre clima, use a ferramenta 'getWeather'. 3. PROCESSO OBRIGATÓRIO: Após usar uma ferramenta, formule uma resposta completa no seu estilo.` }] },
+    { role: "model", parts: [{ text: `Hai. Compreendi minhas diretrizes.` }] }
+];
+
+// --- Middlewares de Autenticação ---
+const getUserIdIfExists = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+            const token = authHeader.split(' ')[1];
+            req.user = { id: jwt.verify(token, process.env.JWT_SECRET).userId };
+        } catch { req.user = null; }
+    }
+    next();
+};
+
+const protectRoute = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+            const token = authHeader.split(' ')[1];
+            req.user = { id: jwt.verify(token, process.env.JWT_SECRET).userId };
+            next();
+        } catch { res.status(401).json({ message: 'Token inválido.' }); }
+    } else { res.status(401).json({ message: 'Acesso negado, token não fornecido.' }); }
+};
+
+// --- Rotas de Autenticação ---
+app.use('/api/auth', authRoutes);
+
+// --- Rota Principal do Chat ---
+app.post('/api/chat', getUserIdIfExists, async (req, res) => {
+    const { prompt: userMessage, sessionId: reqSessionId } = req.body;
+    let sessionId = reqSessionId;
 
     try {
-        // Validação do prompt
-        if (!userPrompt || typeof userPrompt !== 'string' || userPrompt.trim() === '') {
-            console.warn("Alerta: Prompt inválido ou vazio recebido."); // Use warn para avisos
-            return res.status(400).json({ error: 'Nenhum prompt válido foi fornecido.' }); // Retorna 400 Bad Request
+        if (!userMessage || typeof userMessage !== 'string' || userMessage.trim() === '') {
+            return res.status(400).json({ error: 'Nenhum prompt válido foi fornecido.' });
         }
 
-        // Inicia uma sessão de chat
-        // Removidos history e generationConfig aqui também para simplificar testes
-        const chat = model.startChat({
-           history: [] // Começa com histórico vazio (ou gerencie o histórico se necessário)
-           // generationConfig e safetySettings omitidos
-        });
-
-        // Envia a mensagem do usuário para a sessão de chat
-        console.log("Enviando prompt para a API Gemini...");
-        const result = await chat.sendMessage(userPrompt.trim()); // Usa trim() para limpar espaços extras
-
-        // Obtém a resposta
-        const response = result.response;
-
-        // Validação robusta da resposta
-        if (!response || typeof response.text !== 'function') {
-           console.error("!!! Resposta inesperada da API Gemini:", response);
-           // Lança um erro para ser pego pelo bloco catch
-           throw new Error("Formato de resposta inválido recebido da API Gemini.");
+        let systemInstruction;
+        if (req.user && req.user.id) {
+            const currentUser = await User.findById(req.user.id).select('customSystemInstruction');
+            if (currentUser && currentUser.customSystemInstruction) {
+                systemInstruction = currentUser.customSystemInstruction;
+            }
         }
 
-        // Extrai o texto da resposta
-        const text = response.text();
-        console.log(`[${new Date().toISOString()}] Resposta da IA: "${text}"`); // Log com timestamp
-
-        // Envia a resposta da IA de volta para o frontend
-        res.json({ reply: text });
-
-    } catch (error) {
-        // --- Tratamento de Erro Aprimorado ---
-        console.error(`\n!!! ERRO NO ENDPOINT /api/chat !!!`);
-        console.error(`Timestamp: ${new Date().toISOString()}`);
-        console.error(`Prompt Recebido: "${userPrompt}"`); // Loga o prompt que pode ter causado o erro
-
-        // Verifica se é um erro específico da API do Google para mais detalhes
-        if (error instanceof Error && error.message.includes('GoogleGenerativeAI')) { // Checagem mais genérica do nome/mensagem
-            console.error("Tipo de Erro: Google Generative AI");
-            // Tenta logar detalhes adicionais se disponíveis (pode variar com a versão da lib)
-            if (error.status) console.error("Status HTTP (se aplicável):", error.status);
-            if (error.statusText) console.error("Status Text (se aplicável):", error.statusText);
-            if (error.errorDetails) console.error("Detalhes do Erro da API:", error.errorDetails);
+        let history;
+        if (sessionId && chatSessions[sessionId]) {
+            history = chatSessions[sessionId];
         } else {
-            console.error("Tipo de Erro: Erro Geral do Servidor");
+            sessionId = crypto.randomUUID();
+            history = systemInstruction
+                ? [{ role: "user", parts: [{ text: systemInstruction }] }, { role: "model", parts: [{ text: "Entendido." }] }]
+                : JSON.parse(JSON.stringify(initialSystemHistory));
         }
+        
+        history.push({ role: "user", parts: [{ text: userMessage.trim() }] });
 
-        // Loga o objeto de erro completo, incluindo stack trace (essencial para depuração)
-        console.error("Erro Detalhado Completo:", error);
-        console.error("--- Fim do Log de Erro ---\n");
-        // --- Fim do Tratamento de Erro Aprimorado ---
+        let finalBotReply = "";
+        for (let i = 0; i < 5; i++) {
+            const result = await model.generateContent({ contents: history, tools });
+            const candidate = result.response.candidates[0];
+            const parts = candidate.content.parts;
+            const functionCalls = parts.filter(p => p.functionCall);
+            const textParts = parts.filter(p => p.text);
 
-        // Envia uma resposta genérica 500 para o cliente
-        // IMPORTANTE: Não envie detalhes internos do erro para o cliente por segurança
-        res.status(500).json({ error: 'Ocorreu um erro interno no servidor ao processar sua solicitação.' });
+            if (functionCalls.length > 0) {
+                history.push(candidate.content);
+                const functionResponses = await Promise.all(functionCalls.map(async call => {
+                    const { name, args } = call.functionCall;
+                    const functionResult = await availableFunctions[name](args);
+                    return { functionResponse: { name, response: functionResult } };
+                }));
+                history.push({ role: "model", parts: functionResponses });
+            } else if (textParts.length > 0) {
+                finalBotReply = textParts.map(p => p.text).join(" ");
+                history.push({ role: "model", parts: textParts });
+                break;
+            } else {
+                finalBotReply = "Não consegui formular uma resposta.";
+                break;
+            }
+        }
+        
+        chatSessions[sessionId] = history;
+        res.json({ reply: finalBotReply, sessionId });
+    } catch (error) {
+        console.error(`[Sessão: ${sessionId || 'indefinida'}] ERRO GERAL:`, error);
+        res.status(500).json({ error: 'Uma perturbação inesperada ocorreu.' });
     }
 });
 
-// --- Inicia o Servidor ---
-app.listen(port, () => {
-    console.log(`\nServidor Express iniciado com sucesso.`);
-    console.log(`Escutando na porta: ${port}`);
-    console.log(`Acesse a aplicação em: http://localhost:${port}`);
-    console.log(`Servindo arquivos estáticos da pasta: 'public'`);
-    console.log(`Pressione CTRL+C para parar o servidor.\n`);
+// --- Conexão com MongoDB ---
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log('MongoDB conectado!'))
+    .catch(err => console.error('Erro de conexão com MongoDB:', err));
+
+// --- Endpoints de Histórico (AGORA PROTEGIDOS) ---
+app.get("/api/chat/historicos", protectRoute, async (req, res) => {
+    try {
+        const historicos = await SessaoChat.find({ userId: req.user.id }).sort({ startTime: -1 }).limit(20);
+        res.json(historicos);
+    } catch { res.status(500).json({ error: "Erro ao buscar históricos." }); }
 });
 
-// --- Tratamento para Encerramento Gracioso (Opcional mas bom) ---
-process.on('SIGINT', () => {
-    console.log('\nRecebido SIGINT (Ctrl+C). Encerrando o servidor...');
-    // Aqui você pode adicionar lógicas de limpeza se necessário (ex: fechar DB)
-    process.exit(0);
+app.delete("/api/chat/historicos/:id", protectRoute, async (req, res) => {
+    try {
+        await SessaoChat.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+        res.status(200).json({ message: "Histórico excluído." });
+    } catch { res.status(500).json({ error: "Erro ao excluir." }); }
 });
+
+// ... Adicione aqui suas outras rotas de histórico (`gerar-titulo`, `salvar-historico`) também com `protectRoute`
+
+// --- Inicia o Servidor ---
+app.listen(port, () => console.log(`\n🚀 Servidor rodando em http://localhost:${port}\n`));
