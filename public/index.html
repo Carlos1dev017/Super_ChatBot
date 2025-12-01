@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Musashi Miyamoto - Chatbot Samurai</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Header com informações do usuário -->
+    <div class="user-header">
+        <div class="user-info">
+            <span>👤 <span id="user-display">Carregando...</span></span>
+        </div>
+        <div class="user-actions">
+            <a href="/perfil.html" class="header-btn">⚙️ Personalizar Bot</a>
+            <button id="logout-btn" class="header-btn logout">🚪 Sair</button>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <!-- Container principal do chat -->
+        <div id="chat-container">
+            <h1>🥋 Musashi Miyamoto</h1>
+            <div id="chat-box">
+                <div class="message bot-message">Olá, pequeno gafanhoto! Como posso ajudá-lo hoje?</div>
+            </div>
+            <div id="input-area">
+                <input type="text" id="user-input" placeholder="Digite sua mensagem...">
+                <button id="send-button">Enviar</button>
+            </div>
+        </div>
+
+        <!-- Sidebar com informações do bot -->
+        <aside id="info-bot-container">
+            <h2>🤖 <span id="nome-bot-display">[Nome do Bot]</span></h2>
+            <p id="slogan-bot-display"><em>[Slogan do Bot]</em></p>
+            <div id="descricao-bot-display">
+                <p>[Descrição...]</p>
+            </div>
+            <div id="autoria-bot">
+                <p><strong>Desenvolvido por:</strong></p>
+                <ul></ul>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Seção de histórico -->
+    <section id="historico-container">
+        <h2>📜 Histórico de Conversas</h2>
+        <ul id="lista-sessoes">
+            <li style="text-align: center; color: #666;">Carregando...</li>
+        </ul>
+        <div id="visualizacao-conversa-detalhada"></div>
+    </section>
+
+    <script src="script.js"></script>
+</body>
+</html>

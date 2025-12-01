@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Musashi Miyamoto - Modo Visitante</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .guest-banner {
+            background-color: #ff9800;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: 500;
+        }
+        .guest-banner a {
+            color: white;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="guest-banner">
+        Modo Visitante - Suas conversas não serão salvas. 
+        <a href="/login.html">Fazer login</a> | 
+        <a href="/register.html">Criar conta</a>
+    </div>
+
+    <div class="main-layout" style="margin-top: 20px;">
+        <div id="chat-container">
+            <h1>🥋 Musashi Miyamoto</h1>
+            <div id="chat-box">
+                <div class="message bot-message">Olá, visitante! Como posso ajudá-lo hoje? (Suas conversas não serão salvas)</div>
+            </div>
+            <div id="input-area">
+                <input type="text" id="user-input" placeholder="Digite sua mensagem...">
+                <button id="send-button">Enviar</button>
+            </div>
+        </div>
+
+        <aside id="info-bot-container">
+            <h2>🤖 Musashi Miyamoto</h2>
+            <p><em>Seu companheiro samurai</em></p>
+            <div>
+                <p>Bot forjado no espírito do lendário guerreiro samurai.</p>
+                <p>Crie uma conta para salvar suas conversas e personalizar o bot!</p>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // Script simplificado para modo visitante (sem autenticação)
+        document.addEventListener("DOMContentLoaded", () => {
+            const chatBox = document.getElementById("chat-box");
+            const userInput = document.getElementById("user-input");
+            const sendButton = document.getElementById("send-button");
+            const API_URL = "/api/chat";
+            let sessionId = null;
+
+            function addMessage(message, sender) {
+                const messageDiv = document.createElement("div");
+                messageDiv.classList.add("message", `${sender}-message`);
+                messageDiv.innerText = message;
+                chatBox.appendChild(messageDiv);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+
+            function showTyping(show = true) {
+                const existing = document.getElementById("typing");
+                if (existing) existing.remove();
+
+                if (show) {
+                    const typingDiv = document.createElement("div");
+                    typingDiv.classList.add("message", "bot-message", "typing-indicator");
+                    typingDiv.textContent = "Meditando...";
+                    typingDiv.id = "typing";
+                    chatBox.appendChild(typingDiv);
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }
+            }
+
+            async function sendMessage() {
+                const message = userInput.value.trim();
+                if (!message) return;
+
+                addMessage(message, "user");
+                userInput.value = "";
+                sendButton.disabled = true;
+                showTyping();
+
+                try {
+                    const response = await fetch(API_URL, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ prompt: message, sessionId }),
+                    });
+
+                    showTyping(false);
+
+                    if (!response.ok) {
+                        throw new Error(`Erro: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.reply) {
+                        addMessage(data.reply, "bot");
+                        sessionId = data.sessionId;
+                    }
+                } catch (error) {
+                    showTyping(false);
+                    console.error("Erro:", error);
+                    addMessage("Erro ao conectar com o bot.", "bot");
+                } finally {
+                    sendButton.disabled = false;
+                    userInput.focus();
+                }
+            }
+
+            sendButton.addEventListener("click", sendMessage);
+            userInput.addEventListener("keypress", (e) => {
+                if (e.key === "Enter") sendMessage();
+            });
+        });
+    </script>
+</body>
+</html>
