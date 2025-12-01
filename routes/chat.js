@@ -4,14 +4,16 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = express.Router();
 
+// Importa jwt no topo
+import jwt from 'jsonwebtoken';
+
 // Middleware de autenticação (opcional para algumas rotas)
 const getUserIdIfExists = (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
         try {
             const token = authHeader.split(' ')[1];
-            const jwt = await import('jsonwebtoken');
-            req.user = { id: jwt.default.verify(token, process.env.JWT_SECRET).userId };
+            req.user = { id: jwt.verify(token, process.env.JWT_SECRET).userId };
         } catch { 
             req.user = null; 
         }
@@ -25,8 +27,7 @@ const protectRoute = (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
         try {
             const token = authHeader.split(' ')[1];
-            const jwt = await import('jsonwebtoken');
-            req.user = { id: jwt.default.verify(token, process.env.JWT_SECRET).userId };
+            req.user = { id: jwt.verify(token, process.env.JWT_SECRET).userId };
             next();
         } catch { 
             res.status(401).json({ message: 'Token inválido.' }); 
