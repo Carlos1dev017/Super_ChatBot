@@ -1,4 +1,3 @@
-// routes/chat.js
 import express from 'express';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
@@ -6,9 +5,6 @@ import SessaoChat from '../models/SessaoChat.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = express.Router();
-
-// Importa jwt no topo
-import jwt from 'jsonwebtoken';
 
 // Middleware de autenticação (opcional para algumas rotas)
 const getUserIdIfExists = (req, res, next) => {
@@ -240,7 +236,7 @@ router.get("/estatisticas", protectRoute, async (req, res) => {
         });
         
         const totalMensagens = await SessaoChat.aggregate([
-            { $match: { userId: mongoose.Types.ObjectId(req.user.id) } },
+            { $match: { userId: new mongoose.Types.ObjectId(req.user.id) } },
             { $group: { _id: null, total: { $sum: "$messageCount" } } }
         ]);
         
