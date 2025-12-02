@@ -38,7 +38,8 @@ for (const envVar of requiredEnvVars) {
 
 // --- Configuração da API Gemini ---
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_NAME = "gemini-2.5-flash-latest";
+// CORREÇÃO: Use um modelo que existe na API
+const MODEL_NAME = "gemini-1.5-flash"; // ou "gemini-1.5-pro" ou "gemini-pro"
 const generationConfig = { 
     temperature: 0.7, 
     topK: 40, 
@@ -80,7 +81,7 @@ const tools = [{
 // --- Inicialização do Modelo Gemini ---
 let model;
 try {
-    const genAI = new GoogleGenerativeAI(API_KEY, { apiVersion: 'v1' });     
+    const genAI = new GoogleGenerativeAI(API_KEY);
     model = genAI.getGenerativeModel({ model: MODEL_NAME, generationConfig, safetySettings });
     console.log(`✅ Modelo Gemini inicializado: ${MODEL_NAME}`);
 } catch (error) {
@@ -323,5 +324,3 @@ app.listen(port, () => {
 });
 
 export default app;
-
-
