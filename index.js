@@ -39,7 +39,7 @@ for (const envVar of requiredEnvVars) {
 // --- Configuração da API Gemini ---
 const API_KEY = process.env.GEMINI_API_KEY;
 // CORREÇÃO: Use um modelo que existe na API
-const MODEL_NAME = "gemini-1.5-flash"; // ou "gemini-1.5-pro" ou "gemini-pro"
+const MODEL_NAME = "gemini-3-pro-preview"; // ou "gemini-1.5-pro" ou "gemini-pro"
 const generationConfig = { 
     temperature: 0.7, 
     topK: 40, 
@@ -324,3 +324,4 @@ app.listen(port, () => {
 });
 
 export default app;
+
