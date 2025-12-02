@@ -80,12 +80,8 @@ const tools = [{
 // --- Inicialização do Modelo Gemini ---
 let model;
 try {
-    const genAI = new GoogleGenerativeAI(API_KEY);
-    model = genAI.getGenerativeModel({ 
-        model: MODEL_NAME, 
-        generationConfig, 
-        safetySettings 
-    });
+    const genAI = new GoogleGenerativeAI(API_KEY, { apiVersion: 'v1' });     
+    model = genAI.getGenerativeModel({ model: MODEL_NAME, generationConfig, safetySettings });
     console.log(`✅ Modelo Gemini inicializado: ${MODEL_NAME}`);
 } catch (error) {
     console.error("🚨 Falha ao inicializar o GoogleGenerativeAI:", error.message);
@@ -327,4 +323,5 @@ app.listen(port, () => {
 });
 
 export default app;
+
 
